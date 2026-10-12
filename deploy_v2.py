@@ -33,7 +33,7 @@ res = js("""
 (async () => {
   const app = document.querySelector('#app').__vue_app__;
   const pinia = app.config.globalProperties.$pinia;
-  const cs = pinia._s.get('contracts');
+  const cs = pinia._s.get('contractsStore');
   if (!cs) return 'NO_STORE';
   const r = await cs.addContractFile({name: '%s', content: %s});
   const id = (r && r.id) ? r.id : (typeof r === 'string' ? r : null);
@@ -118,7 +118,7 @@ addr = js("""
 (() => {
   const app = document.querySelector('#app').__vue_app__;
   const pinia = app.config.globalProperties.$pinia;
-  const cs = pinia._s.get('contracts');
+  const cs = pinia._s.get('contractsStore');
   const all = cs.allDeployedContracts || [];
   const mine = all.filter(c => (c.name||'').includes('%s'));
   return mine.length ? mine[mine.length-1].address : 'NO_ADDR';

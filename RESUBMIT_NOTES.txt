@@ -1,0 +1,60 @@
+TRUTHORACLE v2 — RESUBMIT NOTES (More Info Needed -> edit + resubmit, NO SLOT)
+==============================================================================
+
+Steward feedback (submission ddb7899e) dan jawabannya:
+
+1. "validators [must evaluate] whether evidence substantively supports
+   or contradicts the stored claim — instead of using keyword presence
+   or absence"
+   -> FIXED: verdicts are now SUBSTANTIVE LLM judgments.
+   gl.nondet.exec_prompt(response_format="json") weighs the fetched
+   evidence as a whole and returns {verdict, rationale}. Keyword
+   counting is GONE (no claim_words / hits / substring logic remains).
+   Consensus: every validator independently re-fetches the sources,
+   re-runs the same judgment, and must agree on the stabilized JSON
+   (json.dumps sort_keys) via gl.eq_principle.strict_eq — the
+   community-standard pattern (see genlayer-utils).
+
+2. "A challenger-hosted [page] must not be able to overturn a claim"
+   -> FIXED: challenge_claim no longer trusts the counter-URL alone.
+   It RE-FETCHES the ORIGINAL claim sources PLUS the counter-evidence
+   and re-runs the SAME substantive consensus on the combined set.
+   The prompt explicitly instructs: counter-evidence must substantively
+   refute the claim to overturn; a page that merely fails to mention
+   the claim is NOT refutation. A hostile empty page can no longer
+   flip verdicts.
+
+3. "challenges must re[-fetch]" -> the challenge round IS a full
+   re-evaluation (original + counter), recorded on-chain with
+   old/new verdict + rationale.
+
+WHAT TO DO IN THE PORTAL:
+- Open My Submissions -> TruthOracle -> "More information requested"
+- Edit the submission (this does NOT consume a slot)
+- Contract link: keep 0x4e0DF080657f73743327D3798361BcF12bed2a0f (v1
+  deployed) — OR deploy v2 and add the new address as a second link.
+- In the notes/reply to steward, paste:
+
+  ---
+  Thank you for the detailed review. v2 addresses both points:
+
+  (1) Substantive evaluation: verdicts are now LLM judgments via
+  gl.nondet.exec_prompt(response_format="json") over the live-fetched
+  sources; all keyword-counting logic has been removed. Consensus:
+  validators independently re-fetch and re-run the same judgment,
+  agreeing on the stabilized JSON verdict via strict_eq.
+
+  (2) Challenge hardening: challenge_claim now re-fetches the ORIGINAL
+  claim sources together with the counter-evidence URL and re-runs the
+  same substantive consensus on the combined evidence. A challenger-
+  hosted page that merely fails to mention the claim cannot overturn
+  a VERIFIED verdict — the jury prompt requires substantive refutation.
+
+  Updated source: https://github.com/Azet17/truthoracle
+  (commit "v2: substantive LLM verdicts ...")
+  ---
+
+- Submit.
+
+SOURCE PROOF (v2 file): /home/ubuntu/truthoracle/truth_oracle.py
+GitHub: https://github.com/Azet17/truthoracle — sudah di-push (ccedb3f).
