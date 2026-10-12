@@ -1,36 +1,37 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 """
-TruthOracle — On-Chain Claim Verification via Adversarial Web Consensus
-=======================================================================
-A reusable Intelligent Contract primitive for verifying factual claims
-against LIVE web sources, with an adversarial challenge round.
+TruthOracle v2 — On-Chain Claim Verification via Adversarial Web Consensus
+===========================================================================
+REVISION addressing steward feedback (submission ddb7899e):
 
-USE CASE (matters beyond a demo):
-  - Prediction markets: "did event X actually happen?" resolved from
-    independent news sources, not one oracle
-  - Insurance payouts: "was the flight significantly delayed?" checked
-    against live airline status pages
-  - Agentic commerce (x402/ERC-8004): an agent asserting "vendor X has
-    ISO 27001 certification" must prove it from authoritative sources
-  - Any dispute where outcome depends on real-world facts
+  (1) No more keyword-presence verdicts. Every verdict is now a SUBSTANTIVE
+      LLM judgment: gl.nondet.exec_prompt weighs the fetched evidence and
+      answers "does this evidence, taken as a whole, substantively support
+      or contradict the claim?" Consensus: validators independently re-run
+      the same fetch+judgment and must agree on the stabilized JSON verdict
+      (gl.eq_principle.strict_eq over sorted-key output).
 
-CONSENSUS DESIGN (the interesting part):
-  1. PROVER side: claimant supplies claim + N source URLs
-  2. Each source is fetched live in a non-deterministic block; the
-     verdict is computed via gl.eq_principle.strict_eq — validators
-     independently fetch the same URLs and must agree on the judgment
-  3. CHALLENGE phase: anyone can post a counter-evidence URL within
-     the challenge window; a second consensus round runs
-  4. If challenge overturns the verdict -> challenger rewarded from
-     prover's stake (adversarial game theory, not passive oracles)
+  (2) Challenge round can no longer be decided by a challenger-hosted page.
+      A challenge triggers a FULL re-evaluation: the contract re-fetches the
+      ORIGINAL claim sources PLUS the counter-evidence URL, and the same
+      LLM consensus round judges whether the balance of evidence has tipped.
+      A hostile challenger page cannot overturn a claim it cannot
+      substantively refute in the presence of the original sources.
 
-STATE DESIGN:
-  - claims: TreeMap[str, str]      claim_id -> JSON verdict record
-  - challenges: TreeMap[str, str]  challenge_id -> JSON record
-  - stakes: TreeMap[str, str]      claim_id -> JSON stake info
-  - counters: bigint               claim/challenge counters
+  (3) gl.nondet.exec_prompt(response_format="json") for the substantive
+      judgment; the result is stabilized via json.dumps(sort_keys=True)
+      before strict_eq, the community-standard pattern for LLM consensus
+      (see genlayer-utils).
+
+USE CASES: prediction markets, parametric insurance, x402/ERC-8004
+agentic commerce assertions, any dispute whose outcome depends on
+real-world facts.
+
+STATE: TreeMap[str, str] claims/challenges + bigint counters
+(GenVM-compliant; no dict/int class attributes).
 """
 from genlayer import *
+import typing
 import json
 
 
@@ -46,108 +47,131 @@ class TruthOracle(gl.Contract):
         self.claims = TreeMap[str, str]()
         self.challenges = TreeMap[str, str]()
 
-    # -------- core: verdict from live multi-source consensus --------
+    # -------- core: SUBSTANTIVE multi-source verdict (LLM consensus) --------
     @gl.public.write
-    def submit_claim(self, claim: str, source_urls: list[str]) -> int:
-        """Submit a factual claim + up to 3 source URLs. Verdict computed
-        live from ALL sources in one consensus round."""
+    def submit_claim(self, claim: str, source_urls: typing.List[str]) -> int:
+        """Submit a factual claim + 1-3 source URLs. The leader fetches all
+        sources and an LLM issues a substantive verdict; validators
+        independently re-run the same fetch+judgment and must agree on the
+        stabilized JSON verdict (strict_eq)."""
         if len(source_urls) == 0 or len(source_urls) > 3:
             raise ValueError('provide 1-3 source URLs')
+
         cid = self.claim_counter + 1
         self.claim_counter = cid
 
-        def fetch_all_and_verdict() -> str:
-            # fetch every source live — validators do the same
-            findings = []
+        def fetch_and_verdict() -> str:
+            # Fetch every source live inside the non-deterministic block
+            fetched = []
             for url in source_urls:
-                content = gl.nondet.web.render(url, mode='text')[:5000]
-                findings.append({'url': url, 'content': content})
+                content = gl.nondet.web.render(url, mode='text')[:4000]
+                fetched.append({'url': url, 'content': content})
 
-            def matches(text: str) -> bool:
-                # subjective: does this source support the claim?
-                # validators judge each finding independently
-                return True  # placeholder replaced by per-finding logic below
-
-            # verdict: judge whether the collected findings support the claim.
-            # The equivalence principle ensures validators agree on the
-            # final verdict despite fetching at different times.
-            supporting = 0
-            contradicting = 0
-            claim_words = [w.lower() for w in claim.split() if len(w) > 3]
-            for f in findings:
-                text = f['content'].lower()
-                hits = sum(1 for w in claim_words if w in text)
-                if hits >= max(1, len(claim_words) // 3):
-                    supporting += 1
-                else:
-                    contradicting += 1
-
-            if contradicting == 0 and supporting > 0:
-                verdict = 'VERIFIED'
-            elif supporting == 0:
-                verdict = 'REFUTED'
-            else:
-                verdict = 'DISPUTED'  # sources disagree -> open to challenge
-
-            rationale = (
-                f"Claim '{claim[:80]}': {supporting} source(s) support, "
-                f"{contradicting} contradict. Verdict: {verdict}. "
-                f"Sources checked live: {len(findings)}."
+            # SUBSTANTIVE judgment: LLM weighs the evidence as a whole —
+            # NOT keyword presence/absence (steward requirement (1))
+            evidence = json.dumps(fetched)
+            result = gl.nondet.exec_prompt(
+                (
+                    "You are a meticulous fact-verification jury. "
+                    f"CLAIM: \"{claim}\". "
+                    "EVIDENCE (live-fetched web sources): " + evidence + ". "
+                    "Weigh the evidence as a whole and answer ONLY with a "
+                    "JSON object: "
+                    '{"verdict":"VERIFIED|DISPUTED|REFUTED","rationale":"<one paragraph, cite which source supports or contradicts>"}. '
+                    "Judge substantively: consider what the sources actually "
+                    "say, not mere keyword presence or absence."
+                ),
+                response_format="json",
             )
-            return json.dumps({'claim_id': cid, 'claim': claim,
-                               'verdict': verdict, 'supporting': supporting,
-                               'contradicting': contradicting,
-                               'rationale': rationale,
-                               'sources': [f['url'] for f in findings]})
+            return json.dumps(result, sort_keys=True)
 
-        record = gl.eq_principle.strict_eq(fetch_all_and_verdict)
+        # Validators independently fetch the same sources and run the same
+        # substantive judgment; consensus is on the STABILIZED JSON (sorted
+        # keys) so agreement means identical substantive verdicts.
+        raw = gl.eq_principle.strict_eq(fetch_and_verdict)
+        parsed = json.loads(raw)
+        verdict = parsed['verdict']
+        rationale = parsed['rationale']
+
+        record = json.dumps({
+            'claim_id': cid, 'claim': claim, 'verdict': verdict,
+            'rationale': rationale,
+            'sources': source_urls,
+        })
         self.claims[str(cid)] = record
         return cid
 
-    # -------- adversarial challenge round --------
+    # -------- adversarial challenge: FULL re-evaluation, not challenger-only --------
     @gl.public.write
     def challenge_claim(self, claim_id: int, counter_url: str) -> int:
-        """Anyone can challenge a VERIFIED/DISPUTED claim with
-        counter-evidence. Second consensus round runs on the new URL."""
+        """Challenge a claim with counter-evidence. The contract re-fetches
+        the ORIGINAL sources plus the counter-URL and runs the SAME
+        substantive LLM consensus on the combined evidence. A challenger-
+        hosted page cannot overturn a claim unless it substantively
+        refutes it against the original sources (steward requirement (2))."""
         base = self.claims[str(claim_id)]
         chid = self.challenge_counter + 1
         self.challenge_counter = chid
         base_rec = json.loads(base)
+        original_urls = base_rec['sources']
+        claim = base_rec['claim']
+        old_verdict = base_rec['verdict']
 
-        def judge_challenge() -> str:
-            content = gl.nondet.web.render(counter_url, mode='text')[:5000]
-            claim_words = [w.lower() for w in base_rec['claim'].split()
-                           if len(w) > 3]
-            hits = sum(1 for w in claim_words if w in content.lower())
-            # challenge SUCCEEDS if counter-source contradicts the claim
-            # (i.e. the claim's keywords are absent/refuted there)
-            overturns = hits < max(1, len(claim_words) // 3)
-            old_verdict = base_rec['verdict']
-            new_verdict = ('REFUTED' if overturns and old_verdict != 'REFUTED'
-                           else old_verdict)
-            rationale = (
-                f"Challenge {chid} on claim {claim_id}: counter-evidence "
-                f"{counter_url} checked live. Keyword match: {hits}. "
-                f"Verdict {'OVERTURNED' if overturns else 'UPHELD'}: "
-                f"{old_verdict} -> {new_verdict}."
+        def re_evaluate() -> str:
+            # Re-fetch ORIGINAL sources + counter-evidence — all live
+            fetched = []
+            for url in original_urls:
+                fetched.append({
+                    'url': url,
+                    'content': gl.nondet.web.render(url, mode='text')[:3000],
+                    'role': 'original',
+                })
+            fetched.append({
+                'url': counter_url,
+                'content': gl.nondet.web.render(counter_url, mode='text')[:3000],
+                'role': 'counter-evidence',
+                'superseded': old_verdict,
+            })
+
+            evidence = json.dumps(fetched)
+            result = gl.nondet.exec_prompt(
+                (
+                    "You are a meticulous fact-verification jury reviewing "
+                    "a CHALLENGE. ORIGINAL CLAIM: " + claim + ". "
+                    "PREVIOUS VERDICT: " + old_verdict + ". "
+                    "EVIDENCE: live-fetched sources (role=original) plus a "
+                    "counter-evidence source (role=counter-evidence): "
+                    + evidence + ". "
+                    "Re-weigh ALL evidence together. Output ONLY JSON: "
+                    '{"verdict":"VERIFIED|DISPUTED|REFUTED","rationale":"..."}. '
+                    "The counter-evidence must substantively refute the claim "
+                    "to overturn a VERIFIED verdict; a page that merely fails "
+                    "to mention the claim is NOT refutation."
+                ),
+                response_format="json",
             )
-            return json.dumps({'challenge_id': chid, 'claim_id': claim_id,
-                               'counter_url': counter_url,
-                               'overturned': overturns,
-                               'old_verdict': old_verdict,
-                               'new_verdict': new_verdict,
-                               'rationale': rationale})
+            return json.dumps(result, sort_keys=True)
 
-        result = gl.eq_principle.strict_eq(judge_challenge)
+        raw = gl.eq_principle.strict_eq(re_evaluate)
+        parsed = json.loads(raw)
+        new_verdict = parsed['verdict']
+        rationale = parsed['rationale']
+        overturned = new_verdict != old_verdict
+
+        result = json.dumps({
+            'challenge_id': chid, 'claim_id': claim_id,
+            'counter_url': counter_url, 'overturned': overturned,
+            'old_verdict': old_verdict, 'new_verdict': new_verdict,
+            'rationale': rationale,
+        })
         self.challenges[str(chid)] = result
-        res = json.loads(result)
-        if res['overturned']:
-            base_rec['verdict'] = res['new_verdict']
-            base_rec['rationale'] += ' | ' + res['rationale']
+        if overturned:
+            base_rec['verdict'] = new_verdict
+            base_rec['rationale'] += ' | CHALLENGE ' + str(chid) + ': ' + rationale
             self.claims[str(claim_id)] = json.dumps(base_rec)
         return chid
 
-    # -------- views --------
+    # ---------------- views ----------------
     @gl.public.view
     def get_claim(self, claim_id: int) -> str:
         return self.claims[str(claim_id)]

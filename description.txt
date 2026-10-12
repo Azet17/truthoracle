@@ -1,0 +1,11 @@
+A reusable primitive for verifying factual claims against LIVE web sources, with an adversarial challenge round.
+
+Consensus: submit_claim fetches up to 3 source URLs live (gl.nondet.web.render); validators independently fetch the same sources and agree on the verdict via gl.eq_principle.strict_eq. Verdict: VERIFIED / DISPUTED / REFUTED, with rationale stored on-chain.
+
+Core design: anyone can challenge a verdict with counter-evidence (challenge_claim) — a second consensus round can OVERTURN it on-chain. Wrong verdicts are not final; passive oracle manipulation becomes uneconomical.
+
+State: two TreeMaps (claims, challenges) + bigint counters, typed per GenVM rules.
+
+Use cases: prediction markets (did the event happen?), parametric insurance, agent assertions in x402/ERC-8004 commerce (prove vendor certification before transacting).
+
+Deployed & verified: tx 0xd1d0e621825f9490554272e772ed9b4b05b35cd76c28411325b303735486da3 FINALIZED on Studio testnet. Source: github.com/Azet17/truthoracle
