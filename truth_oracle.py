@@ -118,6 +118,14 @@ class TruthOracle(gl.Contract):
         claim = base_rec['claim']
         old_verdict = base_rec['verdict']
 
+        # Eligibility guard (steward point 3): only VERIFIED or DISPUTED
+        # claims may be challenged. REFUTED claims are terminal — the
+        # prover must submit a new claim instead. Ineligible states raise
+        # an error and NOTHING is recorded (no false overturn possible).
+        if old_verdict not in ('VERIFIED', 'DISPUTED'):
+            raise ValueError(
+                'claim is ' + old_verdict + ' and not eligible for challenge')
+
         def re_evaluate() -> str:
             # Re-fetch ORIGINAL sources + counter-evidence — all live
             fetched = []

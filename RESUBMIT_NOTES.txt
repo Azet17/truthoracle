@@ -31,8 +31,10 @@ Steward feedback (submission ddb7899e) dan jawabannya:
 WHAT TO DO IN THE PORTAL:
 - Open My Submissions -> TruthOracle -> "More information requested"
 - Edit the submission (this does NOT consume a slot)
-- Contract link: keep 0x4e0DF080657f73743327D3798361BcF12bed2a0f (v1
-  deployed) — OR deploy v2 and add the new address as a second link.
+- Contract link (v2 — USE THIS): 
+  https://explorer-studio.genlayer.com/address/0x6a100353782EE7edD94b1Db5A78cF8F77Ee30594
+  (deploy tx 0x81a9f07e63f9b8cf5dd07b32e26c23a8c9b7caf6eb953023e0cb4106b1900d7a FINALIZED)
+  Old v1 address 0x4e0D...2a0f can stay as a second link for history.
 - In the notes/reply to steward, paste:
 
   ---
@@ -50,8 +52,9 @@ WHAT TO DO IN THE PORTAL:
   hosted page that merely fails to mention the claim cannot overturn
   a VERIFIED verdict — the jury prompt requires substantive refutation.
 
+  v2 is DEPLOYED and FINALIZED on Studio testnet:
+  https://explorer-studio.genlayer.com/address/0x6a100353782EE7edD94b1Db5A78cF8F77Ee30594
   Updated source: https://github.com/Azet17/truthoracle
-  (commit "v2: substantive LLM verdicts ...")
   ---
 
 - Submit.
